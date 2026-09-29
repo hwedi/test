@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Transformer Health Check | STOCHOS</title>
+  <meta name="description" content="Upload a power transformer's dissolved gas readings and get its likely fault condition and estimated remaining life. A decision-support tool by STOCHOS.">
+  <meta name="theme-color" content="#0f766e">
+
+  <!-- Open Graph: how the page looks when a link is shared -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="STOCHOS">
+  <meta property="og:title" content="Transformer Health Check">
+  <meta property="og:description" content="Fault diagnosis and remaining-life estimate for power transformers, from dissolved gas readings.">
+  <meta property="og:url" content="https://transformer.stochos.dev/">
+  <meta name="twitter:card" content="summary">
+
+  <link rel="icon" href="/img/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/css/style.css">
+  <!-- Apply the saved light/dark choice before the page paints, so there is no flash -->
+  <script>
+    try { var t = localStorage.getItem('theme');
+      if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      document.documentElement.dataset.theme = t; } catch (e) {}
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <div class="container header-inner">
+      <a class="brand" href="/" aria-label="STOCHOS Transformer Health Check, home">
+        <span class="brand-mark">STOCHOS</span>
+        <span class="brand-product">Transformer Health Check</span>
+      </a>
+      <div class="header-actions">
+        <a class="header-link" href="https://stochos.dev" rel="noopener">&larr; stochos.dev</a>
+        <button id="theme-toggle" class="btn btn-ghost" type="button">Dark mode</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Only shown when the server runs with MOCK_MODELS=1 (design preview) -->
+  <div id="mock-strip" class="mock-strip" hidden>
+    Preview mode: the results below are simulated, not real predictions.
+  </div>
+
+  <main id="main" class="container">
+    <section class="intro">
+      <h1>Transformer health check</h1>
+      <p class="lead">Estimates a power transformer's condition and remaining life from its dissolved gas readings
+        (H<sub>2</sub>, CO, C<sub>2</sub>H<sub>4</sub>, C<sub>2</sub>H<sub>2</sub>).</p>
+      <p class="hint">Input: a CSV file with <strong>420 rows</strong> (one reading every 12 hours, about 210 days)
+        and the columns <strong>H2, CO, C2H4, C2H2</strong>.</p>
+    </section>
+
+    <!-- Shown while the models are still loading on the server -->
+    <div id="wake-banner" class="banner" role="status" hidden>
+      <span class="spinner" aria-hidden="true"></span>
+      <div>
+        <strong>Waking up the models&hellip;</strong>
+        <span>The server is loading the two AI models. This can take a minute or two after a period of inactivity.</span>
+      </div>
+    </div>
+
+    <section class="panel" aria-labelledby="input-h">
+      <h2 id="input-h" class="visually-hidden">Choose the data to analyse</h2>
+      <div class="input-grid">
+        <div>
+          <h3 class="panel-title">Upload your readings</h3>
+          <!-- The real <input> is hidden but still keyboard-focusable; the label is the big drop area -->
+          <label class="dropzone" id="dropzone" for="file-input">
+            <input id="file-input" class="visually-hidden" type="file" accept=".csv,text/csv" disabled>
+            <svg class="dz-icon" viewBox="0 0 24 24" width="32" height="32" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4m0 0L7 9m5-5 5 5"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
+            <span class="dz-main">Drop a CSV file here, or <u>browse</u></span>
+            <span class="dz-sub">Maximum 2 MB. Your file is analysed and never stored.</span>
+          </label>
+        </div>
+
+        <div>
+          <h3 class="panel-title">Or try an example</h3>
+          <p class="muted small">Twenty transformers the models never saw during training, with their true answers for comparison.</p>
+          <label class="field-label" for="sample-select">Example transformer</label>
+          <div class="row">
+            <select id="sample-select" disabled></select>
+            <button id="sample-btn" class="btn btn-primary" type="button" disabled>Analyse example</button>
+          </div>
+          <a id="sample-download" class="text-link" href="#" download>Download this example as CSV</a>
+        </div>
+      </div>
+
+      <!-- Friendly error for rejected files -->
+      <div id="error-box" class="error-box" role="alert" hidden>
+        <strong id="error-title">This file can't be analysed</strong>
+        <p id="error-text"></p>
+        <p class="small">Not sure about the format? <a id="error-example" href="#" download>Download an example CSV</a> and compare.</p>
+      </div>
+    </section>
+
+    <div id="busy" class="banner" role="status" hidden>
+      <span class="spinner" aria-hidden="true"></span>
+      <strong>Analysing&hellip;</strong>
+    </div>
+
+    <!-- ========== Results (filled in by app.js) ========== -->
+    <section id="results" class="results" aria-labelledby="results-title" hidden>
+      <div class="results-head">
+        <h2 id="results-title" tabindex="-1">Results</h2>
+        <span id="result-name" class="file-chip"></span>
+      </div>
+
+      <div class="cards">
+        <!-- Fault diagnosis -->
+        <article class="card" aria-labelledby="fdd-h">
+          <h3 id="fdd-h" class="card-title">Fault diagnosis</h3>
+          <div class="fdd-top">
+            <div class="gauge" role="img" id="gauge-wrap">
+              <svg viewBox="0 0 100 58" aria-hidden="true">
+                <path class="gauge-track" d="M8 50 A42 42 0 0 1 92 50" pathLength="100"/>
+                <path class="gauge-fill" id="gauge-fill" d="M8 50 A42 42 0 0 1 92 50" pathLength="100" stroke-dasharray="0 100"/>
+                <line class="gauge-tick" id="gauge-tick" x1="0" y1="0" x2="0" y2="0"/>
+              </svg>
+              <div class="gauge-value"><span id="gauge-pct">0</span><small>% confidence</small></div>
+            </div>
+            <div>
+              <span id="class-badge" class="class-badge"></span>
+              <p id="class-name" class="class-name"></p>
+            </div>
+          </div>
+
+          <div id="review-flag" class="flag" role="note" hidden>
+            <strong>Low confidence: needs manual engineering review</strong>
+            <span id="review-detail"></span>
+          </div>
+
+          <h4 class="subtitle">Probability of each condition</h4>
+          <ul id="prob-bars" class="bars"></ul>
+        </article>
+
+        <!-- Remaining useful life -->
+        <article class="card" aria-labelledby="rul-h">
+          <h3 id="rul-h" class="card-title">Remaining useful life</h3>
+          <p class="big-number"><span id="rul-days">0</span> <small>days</small></p>
+          <p class="muted">about <strong id="rul-months"></strong> months</p>
+
+          <div class="range" id="range">
+            <div class="range-track">
+              <div class="range-span" id="range-span"></div>
+              <div class="range-cap" id="range-cap"></div>
+              <div class="range-dot" id="range-dot"></div>
+              <div class="range-actual" id="range-actual" hidden></div>
+            </div>
+            <div class="range-scale"><span>0</span><span id="range-max"></span></div>
+          </div>
+          <ul class="legend">
+            <li><i class="key key-span"></i> Likely range</li>
+            <li><i class="key key-dot"></i> Estimate</li>
+            <li id="legend-actual" hidden><i class="key key-actual"></i> Actual</li>
+            <li><i class="key key-cap"></i> Longest life in training data</li>
+          </ul>
+          <p id="rul-range-text" class="small"></p>
+          <p id="near-cap-note" class="note" hidden></p>
+        </article>
+      </div>
+
+      <!-- Predicted vs actual (examples only) -->
+      <article id="compare" class="card" aria-labelledby="compare-h" hidden>
+        <h3 id="compare-h" class="card-title">Predicted vs actual</h3>
+        <div class="table-wrap">
+          <table class="compare-table">
+            <thead><tr><th scope="col"><span class="visually-hidden">Measure</span></th><th scope="col">Predicted</th><th scope="col">Actual</th><th scope="col">Result</th></tr></thead>
+            <tbody>
+              <tr><th scope="row">Condition</th><td id="cmp-fdd-pred" data-label="Predicted"></td><td id="cmp-fdd-act" data-label="Actual"></td><td id="cmp-fdd-res" data-label="Result"></td></tr>
+              <tr><th scope="row">Remaining life</th><td id="cmp-rul-pred" data-label="Predicted"></td><td id="cmp-rul-act" data-label="Actual"></td><td id="cmp-rul-res" data-label="Result"></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
+
+      <!-- Gas charts -->
+      <article class="card" aria-labelledby="gas-h">
+        <h3 id="gas-h" class="card-title">Gas readings over the monitoring period</h3>
+        <div id="gas-grid" class="gas-grid"></div>
+      </article>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <p><strong>Built by STOCHOS, Samsung Innovation Campus</strong></p>
+      <p class="small">Decision-support tool built for a student capstone project. It does not replace engineering judgement.</p>
+    </div>
+  </footer>
+
+  <script src="/js/common.js"></script>
+  <script src="/vendor/chart.umd.min.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>
